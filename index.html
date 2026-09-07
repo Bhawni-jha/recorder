@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  body { font-family: Arial, sans-serif; padding: 20px; max-width: 500px; margin: auto; }
+  button { padding: 12px 20px; margin: 5px 0; border: none; border-radius: 6px; cursor: pointer; font-size: 15px; width: 100%; }
+  #startBtn { background: #4CAF50; color: white; }
+  #stopBtn { background: #f44336; color: white; }
+  #status { margin-top: 10px; font-weight: bold; }
+  #transcript { margin-top: 10px; padding: 8px; background: #f1f1f1; border-radius: 6px; min-height: 60px; font-size: 13px; }
+</style>
+</head>
+<body>
+  <h2>🎙️ Voice Recorder (to Google Sheet)</h2>
+  <button id="startBtn" onclick="startRecording()">Start Recording</button>
+  <button id="stopBtn" onclick="stopRecording()" disabled>Stop & Save</button>
+  <div id="status">Idle</div>
+  <div id="transcript"></div>
+
+<script>
+  const WEBAPP_URL = "https://script.google.com/macros/s/AKfycbw55YhBi9RNW9PkISYexxowDEDiw9o98XwsjBOBlwKV04jSJwfNjdiOsRq-4TZ0qA2L/exec";
+
+  let mediaRecorder, audioChunks = [], recognition, finalTranscript = '';
+
+  function startRecording() {
+    finalTranscript = '';
+    document.getElementById('transcript').innerText = '';
+    document.getElementById('status').innerText = 'Recording...';
+    document.getElementById('startBtn').disabled = true;
+    document.getElementById('stopBtn').disabled = false;
+
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+      mediaRecorder = new MediaRecorder(stream);
+      audioChunks = [];
+      mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+      mediaRecorder.onstop = () => {
+        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const base64Audio = reader.result.split(',')[1];
+          document.getElementById('status').innerText = 'Saving...';
+          fetch(WEBAPP_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({ audio: base64Audio, transcript: finalTranscript })
+          })
+          .then(() => {
+            document.getElementById('status').innerText = 'Saved! Check your Google Sheet.';
+          })
+          .catch((err) => {
+            document.getElementById('status').innerText = 'Failed to send: ' + err.message;
+          });
+        };
+        reader.readAsDataURL(audioBlob);
+        stream.getTracks().forEach(t => t.stop());
+      };
+      mediaRecorder.start();
+    }).catch(err => {
+      document.getElementById('status').innerText = 'Mic access denied: ' + err.message;
+    });
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+      recognition.onresult = (event) => {
+        let interim = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          if (event.results[i].isFinal) finalTranscript += event.results[i][0].transcript + ' ';
+          else interim += event.results[i][0].transcript;
+        }
+        document.getElementById('transcript').innerText = finalTranscript + interim;
+      };
+      recognition.start();
+    } else {
+      document.getElementById('transcript').innerText = 'Live transcription not supported (use Chrome).';
+    }
+  }
+
+  function stopRecording() {
+    document.getElementById('status').innerText = 'Stopping...';
+    document.getElementById('startBtn').disabled = false;
+    document.getElementById('stopBtn').disabled = true;
+    if (mediaRecorder) mediaRecorder.stop();
+    if (recognition) recognition.stop();
+  }
+</script>
+</body>
+</html>
