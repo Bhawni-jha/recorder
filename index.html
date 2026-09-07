@@ -18,9 +18,11 @@
   <div id="transcript"></div>
 
 <script>
-  const WEBAPP_URL = "https://script.google.com/macros/s/AKfycbw55YhBi9RNW9PkISYexxowDEDiw9o98XwsjBOBlwKV04jSJwfNjdiOsRq-4TZ0qA2L/exec";
+  const WEBAPP_URL =  "https://script.google.com/macros/s/AKfycbw55YhBi9RNW9PkISYexxowDEDiw9o98XwsjBOBlwKV04jSJwfNjdiOsRq-4TZ0qA2L/exec";
+
 
   let mediaRecorder, audioChunks = [], recognition, finalTranscript = '';
+  let recognitionActive = false;
 
   function startRecording() {
     finalTranscript = '';
@@ -43,7 +45,7 @@
             method: 'POST',
             mode: 'no-cors',
             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify({ audio: base64Audio, transcript: finalTranscript })
+            body: JSON.stringify({ audio: base64Audio, transcript: finalTranscript.trim() })
           })
           .then(() => {
             document.getElementById('status').innerText = 'Saved! Check your Google Sheet.';
@@ -66,6 +68,8 @@
       recognition.continuous = true;
       recognition.interimResults = true;
       recognition.lang = 'en-US';
+      recognitionActive = true;
+
       recognition.onresult = (event) => {
         let interim = '';
         for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -74,6 +78,14 @@
         }
         document.getElementById('transcript').innerText = finalTranscript + interim;
       };
+
+      recognition.onend = () => {
+        recognitionActive = false;
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+          mediaRecorder.stop();
+        }
+      };
+
       recognition.start();
     } else {
       document.getElementById('transcript').innerText = 'Live transcription not supported (use Chrome).';
@@ -81,11 +93,15 @@
   }
 
   function stopRecording() {
-    document.getElementById('status').innerText = 'Stopping...';
+    document.getElementById('status').innerText = 'Finishing transcript...';
     document.getElementById('startBtn').disabled = false;
     document.getElementById('stopBtn').disabled = true;
-    if (mediaRecorder) mediaRecorder.stop();
-    if (recognition) recognition.stop();
+
+    if (recognition && recognitionActive) {
+      recognition.stop();
+    } else if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      mediaRecorder.stop();
+    }
   }
 </script>
 </body>
